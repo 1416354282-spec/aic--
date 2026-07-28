@@ -1,0 +1,19 @@
+experiment:
+  name: no_augmentation
+augmentation:
+  horizontal_flip: 0.0
+  affine_probability: 0.0
+  scale: 0.0
+  translate: 0.0
+  depth_dropout: 0.0
+  infrared_dropout: 0.0
+  mosaic:
+    enabled: false
+  mixup:
+    enabled: false
+  copy_paste:
+    enabled: false
+sampler:
+  type: random
+loss:
+  class_balance: none

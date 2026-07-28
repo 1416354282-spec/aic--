@@ -1,0 +1,8 @@
+data:
+  image_size: 1536
+train:
+  batch_size: 10
+  accumulation_steps: 2
+  workers: 4
+model:
+  weights: "/root/aic/v2/第二版/yolov8m.pt"

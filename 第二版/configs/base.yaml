@@ -1,0 +1,86 @@
+﻿project:
+  seed: 42
+  deterministic: true
+  output_root: "/root/aic/v2/第二版/outputs/runs"
+
+data:
+  train_root: "/root/autodl-tmp/训练集"
+  test_root: "/root/autodl-tmp/测试集"
+  split_dir: "/root/aic/v2/第二版/outputs/splits"
+  fold: 0
+  num_folds: 3
+  image_size: 768
+  clip_labels: true
+  modalities: [visible, infrared, depth]
+  infrared_mode: rgb
+  depth_mode: linear
+  add_depth_validity_mask: true
+  jpg_depth_mode: relative_8bit
+
+model:
+  weights: "/root/aic/v2/第二版/yolov8m.pt"
+  num_classes: 12
+  fusion: early
+  allow_download: false
+
+augmentation:
+  horizontal_flip: 0.5
+  scale: 0.20
+  translate: 0.10
+  affine_probability: 0.33
+  hsv_h: 0.015
+  hsv_s: 0.40
+  hsv_v: 0.25
+  depth_dropout: 0.05
+  infrared_dropout: 0.05
+  mosaic:
+    enabled: false
+    probability: 0.5
+    close_last_epochs: 15
+  mixup:
+    enabled: false
+  copy_paste:
+    enabled: false
+    probability: 0.15
+    classes: [1, 7, 9, 10, 11]
+
+sampler:
+  type: random
+  repeat_threshold: 0.01
+
+train:
+  epochs: 200
+  batch_size: 8
+  accumulation_steps: 2
+  workers: 4
+  optimizer: adamw
+  learning_rate: 0.0005
+  weight_decay: 0.0005
+  momentum: 0.937
+  warmup_epochs: 3
+  final_lr_ratio: 0.01
+  amp: true
+  grad_clip: 10.0
+  ema:
+    enabled: true
+    decay: 0.9999
+  validate_every: 5
+  save_every: 10
+
+loss:
+  box: 7.5
+  cls: 0.5
+  dfl: 1.5
+  class_balance: none
+  class_balance_beta: 0.999
+
+validation:
+  confidence: 0.1
+  nms_iou: 0.7
+  max_detections: 100
+  multi_label: true
+
+inference:
+  horizontal_flip_tta: false
+  multiscale_tta: []
+

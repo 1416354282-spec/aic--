@@ -1,0 +1,11 @@
+experiment:
+  name: correctness_baseline
+augmentation:
+  mosaic:
+    enabled: false
+  copy_paste:
+    enabled: false
+sampler:
+  type: random
+loss:
+  class_balance: none

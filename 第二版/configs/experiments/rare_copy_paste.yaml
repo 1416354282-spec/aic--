@@ -1,0 +1,13 @@
+experiment:
+  name: rare_copy_paste
+augmentation:
+  mosaic:
+    enabled: false
+  copy_paste:
+    enabled: true
+    probability: 0.20
+    classes: [1, 7, 9, 10, 11]
+sampler:
+  type: random
+loss:
+  class_balance: none

@@ -1,0 +1,12 @@
+experiment:
+  name: repeat_factor
+augmentation:
+  mosaic:
+    enabled: false
+  copy_paste:
+    enabled: false
+sampler:
+  type: repeat_factor
+  threshold: 0.01
+loss:
+  class_balance: none
