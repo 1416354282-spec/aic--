@@ -5,4 +5,4 @@ train:
   accumulation_steps: 2
   workers: 4
 model:
-  weights: "/root/aic/v2/第二版/yolov8m.pt"
+  weights: "/root/aic/v2/第二版/yolo11m.pt"

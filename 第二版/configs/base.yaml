@@ -18,7 +18,7 @@ data:
   jpg_depth_mode: relative_8bit
 
 model:
-  weights: "/root/aic/v2/第二版/yolov8m.pt"
+  weights: "/root/aic/v2/第二版/yolo11m.pt"
   num_classes: 12
   fusion: early
   allow_download: false
@@ -76,7 +76,7 @@ loss:
 
 validation:
   confidence: 0.1
-  nms_iou: 0.7
+  nms_iou: 0.5
   max_detections: 100
   multi_label: true
 
