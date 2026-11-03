@@ -1,0 +1,4 @@
+# E4: 关闭 Target-Aware Refiner 辅助监督
+loss:
+  target_mask:
+    enabled: false

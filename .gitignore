@@ -4,3 +4,25 @@
 aic-autodl/
 *.pt
 输出结果/
+
+# ===== 版本 6-8: 只上传代码/配置/文档，排除权重、数据集、运行产物 =====
+第六版/outputs/
+第七版/outputs/
+第七版/weights/
+第八版/outputs/
+第八版/logs/
+*/runs*/
+*/submissions/
+*.pth
+*.onnx
+*.engine
+*.ckpt
+*.safetensors
+*.zip
+*.tar.gz
+*.7z
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+.ipynb_checkpoints/

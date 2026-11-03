@@ -1,0 +1,5 @@
+# E7: 关闭条件模态 dropout — 鲁棒性条款对照 (完整模态性能 vs 缺失模态鲁棒)
+_base_: ../base.yaml
+augmentation:
+  infrared_dropout: 0.0
+  depth_dropout: 0.0

@@ -1,0 +1,21 @@
+# E-loss: 小目标回归损失 (尺度归一化 L1 + NWD)
+#
+# 动机 (实测): 12 类直接平均, 而 RT-DETR 的回归损失在归一化坐标上算 L1/GIoU
+#   → 梯度权重 ∝ 目标尺寸 (seat 215px 是 ball 38px 的 5.7 倍), 与评测口径相反;
+#   → GIoU 在 ≤64px 目标上不平滑, mAP@50 83.8 到 mAP@50-95 57.4 之间丢 26 分。
+#
+# 用法:
+#   python scripts/train.py --config configs/base.yaml \
+#     --overlay configs/experiments/runs_x_phase2.yaml \
+#     --overlay configs/experiments/small_object_loss.yaml
+#
+# 建议消融顺序 (每次只动一个旋钮, 其余保持):
+#   1) 只开 nwd_blend: 0.5   —— 验证高 IoU 段改善
+#   2) 只开 l1_size_gamma: 0.5 —— 验证尺度均衡
+#   3) 两者同时开          —— 交互
+model:
+  regression_loss:
+    l1_size_gamma: 0.5
+    l1_weight_bounds: [0.25, 4.0]
+    nwd_blend: 0.5
+    nwd_c: 0.0

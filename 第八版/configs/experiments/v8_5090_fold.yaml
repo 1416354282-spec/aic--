@@ -1,0 +1,7 @@
+# Apply after v8_4090_fold.yaml on the 2026-09-28 RTX 5090 instance.
+# Only the official labels/ directory is available on this instance.
+project:
+  output_root: /root/autodl-fs/v8_runs_fold
+data:
+  split_dir: /root/aic/v8/splits
+  labels_subfolder: labels

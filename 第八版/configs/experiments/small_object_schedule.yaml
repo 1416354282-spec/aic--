@@ -1,0 +1,77 @@
+# E-sched: 分辨率预算重排 —— Phase 3 降到 1536×864, 把 epoch 花在"与推理一致"的尺度上
+#
+# 实测依据 (见 第六版小目标专项改进方案.md 第一节):
+#   同一批 GT, 在不同 phase 尺寸下的有效尺寸 (sqrt(area), px) 与 "≤16px 占比":
+#     Phase 1 640×640 : 中位 20.6px, 24.9% ≤16px (= stride-8 上只有 2 个格子), 4.4% ≤8px
+#     Phase 2 1024×576: 中位 33.0px,  8.4% ≤16px
+#     1920×1088       : 中位 61.8px,  0.7% ≤16px
+#   原计划 70% 的 epoch (20+85/150) 花在前两档, 只有 30% 在 1920 → 预算与瓶颈错位。
+#   另: Phase 1 的 640×640 装 16:9 图像 → 43.8% 画布是零填充 (640×384 只有 6.2%)。
+#
+# Phase 3 选 1536×864 的理由 (实测):
+#   - 16:9 且两维都 32 整除, 1920×1080 原图 letterbox 后 **零填充** (1280×736 有 2.2%);
+#   - 像素量 0.635× 1920×1088 → 1536 上可以放 98 个 epoch (原计划 45 个),
+#     而总算是力 1.03× 原计划 —— 与原 150-epoch 计划同级, 不需要额外算力预算;
+#   - 最小类仍有细节: ball 37.9px → 30.3px (stride-8 上 3.8 格), 而 1024×576 只有 20.2px;
+#   - 若还想更省: 1280×736 (0.451× 像素, 总算力 0.78×, 2.2% 填充);
+#     若显存/时间富裕: 回到 1920×1088 (见文件末尾的"最终高分辨率收尾"注释)。
+#
+# ★ 配套要求: **推理分辨率必须与 Phase 3 一致** (1536×864, 见 configs/experiments/eval_1536.yaml)。
+#   训练 1536 而推理 1920 会重新引入 FixRes 尺度过配 —— 这正是现在掉分的原因之一。
+#
+#   python scripts/train.py --config configs/base.yaml \
+#     --overlay configs/experiments/runs_x_phase2.yaml \
+#     --overlay configs/experiments/small_object_schedule.yaml
+#
+# 换 batch_size 前先量显存 (训练态真实前向+反向):
+#   python scripts/probe_phase_vram.py --size 1536 864 --batch-sizes 3 4 5 \
+#     --overlay configs/experiments/runs_x.yaml --overlay configs/remote_westd.yaml
+train:
+  validate_every: 3        # Phase 3 有 98 epoch, validate_every=5 只有 9 次验证采样
+  phases:
+    - epochs: 12           # Phase 1: 只训新分支
+      lr: 0.001
+      size: [640, 384]     # 16:9 且两维 32 整除 → 零填充 (原 640×640 填 43.8%)
+      batch_size: 24       # 画布小了 40%, 可提到 32; 先保持 24 做受控对照
+      freeze_backbone: true
+      freeze_decoder: true
+      rgb_lr_ratio: 0.1
+      detector_lr_ratio: 0.5
+      accumulation_steps: 2
+      warmup_epochs: 2
+      final_lr_ratio: 0.01
+    - epochs: 40           # Phase 2: 解冻 neck+decoder (85 → 40, 只做尺度桥接)
+      lr: 0.0005
+      size: [1024, 576]
+      batch_size: 12
+      freeze_backbone: true
+      freeze_decoder: false
+      rgb_lr_ratio: 0.1
+      detector_lr_ratio: 0.5
+      accumulation_steps: 2
+      warmup_epochs: 2
+      final_lr_ratio: 0.01
+    - epochs: 98           # Phase 3: 全解冻, 与推理分辨率一致 (原 45 epoch @1920×1088)
+      lr: 0.0001
+      size: [1536, 864]
+      batch_size: 3        # 1920×1088 时 batch3=30.7G(临界)/batch4 OOM →
+                           # 1536×864 约 0.635× 像素, 先按 3 跑, 探针确认后可用 4 + accum 4
+      freeze_backbone: false
+      freeze_decoder: false
+      rgb_lr_ratio: 0.1
+      detector_lr_ratio: 0.5
+      accumulation_steps: 6
+      warmup_epochs: 2
+      final_lr_ratio: 0.01
+
+# 可选: 若希望保留"最终在原生分辨率收尾"的做法 (FixRes 的另一种用法),
+# 在 Phase 3 之后追加一个短阶段, 并把推理分辨率同步改成 1920×1088:
+#   - epochs: 12
+#     lr: 0.00005
+#     size: [1920, 1088]
+#     batch_size: 2
+#     accumulation_steps: 8
+#     freeze_backbone: false
+#     freeze_decoder: false
+#     warmup_epochs: 1
+#     final_lr_ratio: 0.01

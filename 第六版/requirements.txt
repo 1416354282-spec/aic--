@@ -1,0 +1,6 @@
+torch>=2.4
+torchvision
+ultralytics
+opencv-python
+pyyaml
+numpy

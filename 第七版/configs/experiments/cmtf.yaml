@@ -1,0 +1,4 @@
+# E5: CMTF 融合 (v5 跨模态注意力) — 在 D-FINE 底座上复核 v6 的融合机制结论
+_base_: ../base.yaml
+model:
+  fusion: cmtf

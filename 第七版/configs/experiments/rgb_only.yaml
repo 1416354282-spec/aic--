@@ -1,0 +1,12 @@
+# E0: D-FINE-L RGB-only 基线 (COCO 预训练微调, 无融合无关系模块)
+_base_: ../base.yaml
+model:
+  mode: rgb_only
+  relation:
+    alpha_cooc: 0.0
+    alpha_spatial: 0.0
+    alpha_geo: 0.0
+    use_appearance: false
+loss:
+  relation:
+    weight: 0.0

@@ -1,0 +1,64 @@
+# E-noaug: 关闭数据增强 —— 训练输入 = 纯 letterbox (与验证/推理同一预处理路径)
+#
+# 只动增强轴, 不改底座/阶段/lr/尺寸, 与 base.yaml + runs_x_phase2.yaml 相比是单变量对照。
+#
+# ── 做了什么 ──
+#   data.include_originals: false
+#     base.yaml 默认 true + augment_ratio 1.0 → 每 epoch = 1600 原图 + 1600 增强图 = 3200,
+#     其中一半样本走随机增强。关掉后每 epoch = 1600 张, 全部走纯 letterbox。
+#
+#     注: 这里的 1600 是 **fold_0 的训练划分**, 不是数据集总量。数据集 AIC2026_Train_2000
+#     共 2000 张 (2000 图 / 2000 标注, id 完全对齐), 但 base.yaml 的 data.fold=0 会按
+#     第二版/outputs/splits/fold_0_{train,val}.txt 切出 1600 训练 / 400 验证,
+#     验证的 400 张不参与训练。三个 fold 都是 1600+400, 并集恰好等于全部 2000 且无交集。
+#   augmentation 里的几何项全部归零
+#     horizontal_flip / scale / translate / affine_probability = 0
+#     此时 MultiModalTransform 的 `if self.train:` 分支全部不触发, 输出与 transform_plain
+#     逐位相同 → 训练输入恒定, 同一张图在任何 epoch 拿到的张量完全一致。
+#
+# ── ⚠ 必须知道的一件事: epoch 长度腰斩 ──
+#   3200 → 1600 张/epoch (实测 fold_0 训练划分 = 1600), 相同 epochs 下等效更新数减半
+#   (cosine 按 updates 计, 会静默缩短训练), 总呈现样本数也减半 → 这一轮会看着"没训够"。
+#   要保住与原计划相同的更新数和算力, 把各 phase 的 epochs 约略翻倍
+#   (翻倍后 1600×2 = 3200, 与原计划逐位等价), 同时把 validate_every / save_every
+#   也翻倍以保持验证节奏:
+#
+#     配 runs_x_phase2.yaml (X 底座, 20/85/45):
+#       Phase 1 20 → 40,  Phase 2 85 → 170,  Phase 3 45 → 90
+#       validate_every 5 → 10,  save_every 10 → 20
+#     配 small_object_schedule.yaml (12/40/98):
+#       Phase 1 12 → 24,  Phase 2 40 → 80,   Phase 3 98 → 196
+#       validate_every 3 → 6,   save_every 10 → 20
+#
+#   ⚠ Phase 3 翻倍前先确认 wall-clock (98 → 196 epoch @1536×864 bs3 是长跑)。
+#
+# ── 用法 ──
+#   # 三模态 + X 底座 + 无增强 (与上次 runs_x_phase2 的 150 epoch 计划同算力)
+#   python scripts/train.py --config configs/base.yaml \
+#     --overlay configs/experiments/runs_x_phase2.yaml \
+#     --overlay configs/experiments/no_aug.yaml
+#
+#   # 远程 5090D: 追加 --overlay configs/remote_westd.yaml
+#
+#   # 若还想连条件模态 dropout 一起关掉 (本轮 = 输入侧零随机):
+#   ... --set augmentation.infrared_dropout=0.0 --set augmentation.depth_dropout=0.0
+#
+# ── 保留项: 条件模态 dropout (infrared/depth_dropout = 0.10) ──
+#   这是 CoLA 风格的多模态鲁棒性机制 (暗帧时 IR/depth 缺失概率减半), 在本仓库里是
+#   独立实验轴 (见 no_conditional_dropout.yaml "E5"), 不属于几何数据增强, 故本轮保留。
+#   它只做一件事: 把 IR 或 depth 通道整幅置 0; LetterboxMeta 里的 infrared_dropped /
+#   depth_dropped 标记目前没有任何消费方 (全仓库 grep 只有 transforms.py 自己写)。
+#   要取消见上面的 --set 一行。
+
+data:
+  include_originals: false
+  augment_ratio: 0.0        # 双保险: 即使 include_originals 被改回 true 也不产生增强图
+
+augmentation:
+  horizontal_flip: 0.0      # 0.50 → 0
+  scale: 0.0                # 0.20 → 0 (缩放抖动 ∈ [1.0, 1.0])
+  translate: 0.0            # 0.10 → 0
+  affine_probability: 0.0   # 0.33 → 0 (闸门关闭, affine 分支完全不进入)
+  infrared_dropout: 0.10    # 条件模态 dropout: 保留 (见文件头说明)
+  depth_dropout: 0.10
+  dark_brightness: 0.35     # 仅作为上面两项的暗帧判定阈值, 不是亮度增强

@@ -1,0 +1,4 @@
+# E5: 关闭条件模态 dropout (回退固定 5% 零填充, 与 v3 一致)
+augmentation:
+  infrared_dropout: 0.05
+  depth_dropout: 0.05

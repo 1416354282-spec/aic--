@@ -1,0 +1,8 @@
+numpy
+opencv-python
+pyyaml
+torch>=2.0.1
+torchvision>=0.15.2
+scipy          # D-FINE 官方 matcher (Hungarian)
+# 可选: tensorboard (官方训练循环用; 第七版自有训练循环不依赖)
+# 可选: ultralytics (model.base=rtdetr 回退路径)

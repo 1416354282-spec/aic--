@@ -1,0 +1,4 @@
+# E3: 关闭残差恒等 (residual_scale 初始化为 1 而非 0) —— 需经 --set 覆盖实现
+# 用法: --overlay configs/experiments/no_identity.yaml
+model:
+  fusion: tri_cssa

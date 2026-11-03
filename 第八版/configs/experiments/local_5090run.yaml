@@ -1,0 +1,24 @@
+# 本地推理路径覆盖
+# 用法: --config configs/base.yaml --overlay configs/experiments/v8_4090_fold.yaml \
+#       --overlay configs/experiments/local_5090run.yaml
+#
+# 对应 2026-09-28 RTX 5090 上 v8_runs_1600_400_revised_phase3_batch3 训练出的 best.pt
+# (epoch 103, val map50_95=0.5051, split_hash=365a0e1db2dafaff)。
+# 架构参数全部由 v8_4090_fold.yaml 提供, 这里只改本机路径与推理期参数。
+# 相对路径统一以 configs/ 为基准解析 (见 config.py::_resolve_paths)。
+
+project:
+  output_root: "../../outputs/local_infer_5090run"
+
+data:
+  train_root: "../../初赛数据集-面向城市场景的多模态目标检测/训练集/AIC2026_Train_2000"
+  test_root: "../../AIC2026_PHASE_2_1000"
+  split_dir: "../../初赛数据集-面向城市场景的多模态目标检测/训练集/AIC2026_Train_2000"
+  labels_subfolder: "new_labels_2000"
+
+model:
+  weights: "../../rtdetr-x.pt"
+
+train:
+  # Windows 上 DataLoader 多进程需要 __main__ 保护, infer.py 没有, 必须置 0。
+  workers: 0

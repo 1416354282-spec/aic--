@@ -1,0 +1,8 @@
+# E4: 全关系模块 + 外观注意力开关 — 验证外观注意力是否在小数据上过拟合
+_base_: ../base.yaml
+model:
+  relation:
+    alpha_cooc: 0.15
+    alpha_spatial: 0.10
+    alpha_geo: 0.20
+    use_appearance: true

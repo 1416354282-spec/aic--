@@ -1,0 +1,5 @@
+# Apply after v8_4090_fold.yaml and v8_5090_fold.yaml.
+project:
+  output_root: /root/autodl-fs/v8_runs_1600_400
+data:
+  split_dir: /root/aic/v8/splits_1600_400

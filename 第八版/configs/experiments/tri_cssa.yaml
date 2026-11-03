@@ -1,0 +1,3 @@
+# V8 ablation: original Tri-CSSA scoring with the corrected depth-validity data.
+model:
+  fusion: tri_cssa

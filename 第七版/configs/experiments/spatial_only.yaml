@@ -1,0 +1,8 @@
+# E3: 共现 + 空间先验 (Refiner 阶段 2) — 验证空间先验对 uav/boat/ball 的增益
+_base_: ../base.yaml
+model:
+  relation:
+    alpha_cooc: 0.15
+    alpha_spatial: 0.10
+    alpha_geo: 0.0
+    use_appearance: false

@@ -1,0 +1,12 @@
+# 远程 westd 服务器 (AutoDL, RTX 5090D) 路径覆盖配置
+# 用法: python scripts/train.py --overlay configs/remote_westd.yaml
+data:
+  train_root: "/root/autodl-tmp/训练集"
+  test_root: "/root/autodl-tmp/测试集"
+  split_dir: "/root/aic/v7/outputs/splits"   # 远程若沿用旧布局 splits, 改为第二版路径
+  labels_subfolder: "labels"                    # 远程标注目录若为 labels 而非 new_labels_2000
+
+model:
+  weights: "/root/aic/v7/weights/dfine_l_coco.pth"
+  relation:
+    priors: "/root/aic/v7/priors/relation_priors.npz"

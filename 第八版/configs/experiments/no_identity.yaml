@@ -1,0 +1,3 @@
+# Disable identity initialization without changing fusion architecture.
+model:
+  fusion_residual_init: 1.0

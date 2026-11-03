@@ -1,0 +1,31 @@
+# E-depth: 深度/IR 质量先验修复 + 空间化
+#
+# 修的是什么 (见 ../第六版深度质量先验修复.md):
+#   1. 旧代码把 HHA 的 "Height Above Ground" 通道当成 depth_valid 传给
+#      modality_quality, 于是 q_depth = 平均高度, 不是深度有效率;
+#      q_ir 也是二值 (有 1 个非零像素就算 1), 不是有效像素比例。
+#   2. 真实 valid mask 现在由 dataset 无歧义地返回, q_depth/q_ir 改成有效率;
+#      质量在 letterbox **之前** 统计, 黑边不计入分母。
+#   3. 空间质量: 逐 token 的深度有效率图作为 bias 注入 Tri-CSSA,
+#      深度缺失区域 (含 mosaic 接缝 / 擦除 / 模态 dropout) 自动降权。
+#
+# ⚠ 兼容性:
+#   depth_in_channels: 4 会改变 DepthEncoder 第一层卷积形状 (3→4),
+#   只能从 COCO 预训练权重 (rtdetr-l.pt / rtdetr-x.pt) 重新训练;
+#   旧 run 的 checkpoint 无法 resume (其余预训练模块仍正常加载)。
+#   若只想先验证标量修复, 不加本覆盖层即可 —— 标量修复默认生效,
+#   且保持 depth_in_channels=3 / spatial_quality=false, 旧 checkpoint 可加载。
+#
+# 用法:
+#   python scripts/train.py --config configs/base.yaml \
+#     --overlay configs/experiments/runs_x_phase2.yaml \
+#     --overlay configs/experiments/generalization.yaml \
+#     --overlay configs/experiments/depth_quality.yaml
+#
+# 验收:
+#   - 完整模态: mAP@50-95 不应下降 (允许 ±0.3 噪声);
+#   - IR/depth 置零退化评测: 跌幅应小于旧模型 (鲁棒性收窄);
+#   - 观察 q_depth 是否接近真实有效率 (复赛集 31% 的图 <0.5)。
+model:
+  depth_in_channels: 4
+  spatial_quality: true

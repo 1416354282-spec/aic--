@@ -1,0 +1,25 @@
+# 远程训练服务器路径覆盖配置
+# 用法: python scripts/train.py --overlay configs/remote_westd.yaml
+#
+# 当前远端 (2026-09-27 起): AutoDL / RTX 4090 24GB / sm_89, 主机 connect.westb.seetacloud.com:10673
+#   (此前是 westd 的 5090D 32GB; 目录布局保持不变, 故下面的路径无需改动)
+
+data:
+  train_root: "/root/autodl-tmp/训练集"
+  test_root: "/root/autodl-tmp/测试集"
+  split_dir: "/root/aic/v6/第二版-outputs/splits"
+  # ★ 标注版本: 必须用修订版 new_labels_2000, 不要用官方 zip 解压出来的 labels/
+  #   实测两版差异 (2000 个同名文件):
+  #     完全一致 1618 个; 本地修订版新增 1332 框; 官方版独有 553 框 (被改/删); 236 个文件有改动
+  #     类级差值 (修订版 - 官方版): car +378, light +380, person +50, seat +20, ball +6, uav +4,
+  #                                 tricycle +2, animal -41, sign -21
+  #     复核依据: 复习文档的 person=5549 / tricycle=27 对的是 new_labels_2000 (官方版是 5499 / 25)
+  #   镜像哈希已核对: 两版可见光/红外/深度图像逐位相同, 只有标注不同。
+  labels_subfolder: "new_labels_2000"
+
+model:
+  weights: "/root/aic/rtdetr-l.pt"
+  # ⚠ 上面这行是 L 权重。X 底座的实验如果把它放在 runs_x_phase2.yaml 之后应用,
+  #   会变成"L 权重装 X 架构"(实测只迁移 126/1241 项, backbone 基本随机)。
+  #   X 底座请用 full_data.yaml (内含 rtdetr-x.pt, 最后应用), 或追加
+  #   --set model.weights=/root/aic/rtdetr-x.pt

@@ -1,0 +1,59 @@
+# CPU 迷你训练: 验证 trainer 三阶段全流程 (阶段切换/优化器重建/EMA/checkpoint/评估)
+# 用法: python scripts/train.py --config configs/cpu_mini.yaml
+# 注意: 128×128 为 D-FINE 最小可行尺寸 (S3+S4+S5 共 336 tokens ≥ 300 queries)
+_base_: base.yaml
+
+project:
+  deterministic: false
+  output_root: "../outputs/runs_mini"
+
+data:
+  train_root: "../../初赛数据集-面向城市场景的多模态目标检测/训练集/AIC2026_Train_2000"
+  test_root: "../../初赛数据集-面向城市场景的多模态目标检测/测试集/AIC2026_PHASE_1_1000"
+  include_originals: false
+  limit: 4   # CPU 冒烟: 每 epoch 仅 4 张, 验证三阶段全流程 (128×128 特征过小会触发 matcher GIoU 断言)
+
+model:
+  probe_size: 128
+
+train:
+  workers: 0
+  validate_every: 1
+  save_every: 1
+  ema:
+    enabled: true
+    decay: 0.9999
+  phases:
+    - epochs: 1
+      lr: 0.001
+      size: [256, 256]
+      batch_size: 1
+      freeze_backbone: true
+      freeze_decoder: true
+      rgb_lr_ratio: 0.1
+      detector_lr_ratio: 0.5
+      accumulation_steps: 1
+      warmup_epochs: 1
+      final_lr_ratio: 0.1
+    - epochs: 1
+      lr: 0.0005
+      size: [256, 256]
+      batch_size: 1
+      freeze_backbone: true
+      freeze_decoder: false
+      rgb_lr_ratio: 0.1
+      detector_lr_ratio: 0.5
+      accumulation_steps: 1
+      warmup_epochs: 1
+      final_lr_ratio: 0.1
+    - epochs: 1
+      lr: 0.0001
+      size: [256, 256]
+      batch_size: 1
+      freeze_backbone: false
+      freeze_decoder: false
+      rgb_lr_ratio: 0.1
+      detector_lr_ratio: 0.5
+      accumulation_steps: 1
+      warmup_epochs: 1
+      final_lr_ratio: 0.1

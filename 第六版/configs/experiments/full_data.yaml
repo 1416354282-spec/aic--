@@ -1,0 +1,127 @@
+# E-full: 全量数据重训 (2000 张全部进训练) —— 本轮的最终模型
+#
+# 目的: 让最终模型用上原本留作验证的 400 张 (fold_0_val)。
+# 依据: 赛题允许使用全部官方训练集, 且"可自行划分验证集"是可选而非必需
+#       (见 赛题要求.txt 十(三) 与 十一(二))。
+#
+# ── 与 fold_0 实验的唯一区别 ──
+#   data.split_dir → /root/aic/v6/第二版-outputs/splits_full
+#     fold_0_train.txt = 2000 张 (原 fold_0_train 1600 + fold_0_val 400, 已核实无重复)
+#   train.phases[].epochs  → 20/85/45 缩放为 16/69/36
+#
+# ── 为什么 epoch 是缩小而不是放大 ──
+#   每个 epoch 的图片数 1600 → 2000, 而 batch/accum 不变, 所以 updates/epoch 涨了约 1.25 倍
+#   (Phase 2: 67 → 83 upd/epoch)。要让 cosine 走完相同的总步数 (等价训练量),
+#   epochs 应乘 1600/2000 = 0.8。实测总更新数基本对齐:
+#     Phase 1: 50×20 = 1000  →  63×16 = 1008   (×1.008)
+#     Phase 2: 67×85 = 5695  →  83×69 = 5727   (×1.006)
+#     Phase 3: 89×45 = 4005  → 111×36 = 3996   (×0.998)
+#   ⚠ 上一轮我说"epochs 乘 1.25 保持样本呈现数不变"是错的 —— 方向反了。数据变多, epoch 要变少。
+#   warmup_epochs 一并按同样比例下调 (3/3/2 → 2/2/2), 以保持 warmup *步数* 大致不变。
+#
+# ── ⚠⚠ 本 run 的验证指标是泄漏的: 不要用它选点, 不要提交 best.pt ──
+#   fold_0_val 的 400 张现在同时在训练集里 → metrics.jsonl 里的 val mAP 会被"记住"而虚高,
+#   与 fold_0 实验的数字完全不可比。best.pt 就是按这个虚高指标存的。
+#   ★ 提交使用 weights/last.pt (每 epoch 无条件覆盖写入, 内容 = 最后一轮的 EMA 权重)。
+#
+#   保留 validate_every=10 不是为了选点, 是为了当探针: 若标注目录配错 (data.labels_subfolder
+#   指向不存在的目录), 训练集 GT 会全空、模型学不到东西且不报错, 此时 val mAP 会一直是 0,
+#   中期就能发现, 不用等 121 个 epoch 跑完。dataset.py 现在也会在构造时打印 WARNING。
+#
+# ── ★ 标注版本: 必须用修订版 new_labels_2000 (remote_westd.yaml 已配好) ──
+#   官方 zip 解压出来的 labels/ 是旧版, 与全队的分析口径不一致:
+#     与修订版逐文件对比: 完全一致 1618 个 / 修订版新增 1332 框 / 旧版独有 553 框
+#     类级 (修订版 - 旧版): car +378, light +380, person +50, seat +20, ball +6, uav +4,
+#                           tricycle +2, animal -41, sign -21
+#     复核: 复习文档的 person=5549 / tricycle=27 对的是修订版 (旧版是 5499 / 25)
+#   两版的可见光/红外/深度图像逐位相同, 只有标注不同 (已核对哈希)。
+#
+# ── ⚠ 另一个必须绕开的坑: remote_westd.yaml 会把 weights 覆盖成 L ──
+#   remote_westd.yaml 里写的是 weights: /root/aic/rtdetr-l.pt, 若它在 runs_x_phase2.yaml
+#   之后应用, 就会用 **L 权重装 X 架构** (实测只迁移 126/1241 项, backbone 基本随机)。
+#   本文件已显式写上 X 权重路径, 因为它是最后应用的 overlay, 会覆盖回正确值。
+#   (2026-09-27 远端实测确认修复生效: "Transferred 1226/1241 items", X 权重正确加载)
+#
+# ── ⚠ 显存: 本文件的 batch/accum 已按 24GB 卡适配, 别再照抄 32GB 的值 ──
+#   2026-09-27 起远端换成 RTX 4090 24GB (原 5090D 32GB), scripts/probe_phase_vram.py 实测:
+#     Phase 1 (640×640, backbone+decoder 冻结): batch 12 = 20.10G ✓ | batch 16 OOM
+#     Phase 2 (1024×576, backbone 冻结):        batch  8 = 19.37G ✓ | batch 12 OOM
+#     Phase 3 (1536×864, 全解冻):               batch  2 = 17.36G ✓ | batch  3 OOM
+#   这里统一用"缩小 micro-batch + 加大 accum"吸收, 等效 batch 与更新数都保持与原计划一致:
+#     Phase 1: 8×4 = 32 (原 16×2)   Phase 2: 8×3 = 24 (原 12×2)   Phase 3: 2×9 = 18 (原 3×6)
+#   ⚠ 但注意 probe 的 --phase: 不指定时它按"最后一个 phase = 全解冻"测, 测 Phase 1/2 会严重高估。
+#
+# ── ⚠ 若还要先跑 fold_0 的对照实验 (Stage A) ──
+#   runs_x_phase2.yaml 里的 batch(16/12/3) 同样是为 32GB 定的, 在这台 24GB 卡上会 OOM。
+#   在它后面追加这些覆盖 (叠在 remote_westd 之后):
+#     --set train.phases.0.batch_size=8  --set train.phases.0.accumulation_steps=4 \
+#     --set train.phases.1.batch_size=8  --set train.phases.1.accumulation_steps=3 \
+#     --set train.phases.2.batch_size=2  --set train.phases.2.accumulation_steps=9
+#
+# ── 用法 (4090 24GB) ──
+#   # 先把 splits_full 同步上去 (sync_to_5090d.sh 已加)
+#   python scripts/train.py --config configs/base.yaml \
+#     --overlay configs/experiments/runs_x_phase2.yaml \
+#     --overlay configs/remote_westd.yaml \
+#     --overlay configs/experiments/no_aug.yaml \
+#     --overlay configs/experiments/full_data.yaml
+#
+#   # 顺序要点: full_data.yaml 必须放在最后 (它要覆盖 split_dir / epochs / weights)。
+#   # 若换成配 small_object_schedule.yaml (12/40/98), 把下面 epochs 按 ×0.8 自己算成 ~10/32/78。
+
+project:
+  output_root: /root/aic/v6/第六版/outputs/runs_full   # 与实验 run 分开, 便于辨认最终模型
+
+data:
+  split_dir: /root/aic/v6/第二版-outputs/splits_full
+
+model:
+  weights: /root/aic/rtdetr-x.pt    # 显式覆盖 remote_westd.yaml 的 L 权重, 见文件头
+
+train:
+  validate_every: 10
+  phases:
+    - epochs: 16            # 原 20 × 0.8
+      # ★ 稳定性下调 → 已回退 (2026-09-27): 曾把 lr 0.001→0.0005、warmup 2→4 试图压制
+      #   "Phase 1 在 epoch 2 发散", 实测无效 —— 发散点是 epoch 2 的 batch 140~152,
+      #   而 LR 在此处相差 2.7 倍照样发散, 证明与 LR 无关, 因此回退到原计划值。
+      #   真正的成因是数据触发 (seed 固定 → epoch 2 同一 batch 序号每次看到同一批图),
+      #   排查进行中: trainer 现在会打印发散的图片 id 与近 6 个 batch 的 loss 轨迹。
+      lr: 0.001
+      size: [640, 640]
+      # ★ 24GB 适配: 8×4 等效 batch 32 = 原 16×2; 更新数 63×16 = 1008 (与原计划逐位相同)
+      batch_size: 8
+      freeze_backbone: true
+      freeze_decoder: true
+      rgb_lr_ratio: 0.1
+      detector_lr_ratio: 0.5
+      accumulation_steps: 4
+      warmup_epochs: 2
+      # ★ 梯度裁剪收紧 (2026-09-27): 默认 10.0 太松。实测 loss 会在 epoch 2 的
+      #   batch 148~151 由 ~99 逐步涨到 192 然后变 NaN (典型梯度爆炸), 收紧要压住这个尖峰。
+      grad_clip: 1.0
+      final_lr_ratio: 0.01
+    - epochs: 69            # 原 85 × 0.8
+      lr: 0.0005
+      size: [1024, 576]
+      # ★ 24GB 适配: 8×3 等效 batch 24 = 原 12×2; 更新数 84×69 = 5796 (原 5727, +1.2%)
+      batch_size: 8
+      freeze_backbone: true
+      freeze_decoder: false
+      rgb_lr_ratio: 0.1
+      detector_lr_ratio: 0.5
+      accumulation_steps: 3
+      warmup_epochs: 2
+      final_lr_ratio: 0.01
+    - epochs: 36            # 原 45 × 0.8
+      lr: 0.0001
+      size: [1536, 864]
+      # ★ 24GB 适配: 2×9 等效 batch 18 = 原 3×6; 更新数 112×36 = 4032 (原 3996, +0.9%)
+      batch_size: 2
+      freeze_backbone: false
+      freeze_decoder: false
+      rgb_lr_ratio: 0.1
+      detector_lr_ratio: 0.5
+      accumulation_steps: 9
+      warmup_epochs: 2
+      final_lr_ratio: 0.01

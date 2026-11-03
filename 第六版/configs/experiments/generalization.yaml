@@ -1,0 +1,71 @@
+# E-gen: 泛化增强配方 —— 把"每 epoch 一半样本无增强"改成"全增强 + 尺度/光度/遮挡多样性"
+#
+# 依据（见 ../第六版复赛诊断与模型更换建议.md §5、../第六版训练策略审查.md §3/§7）：
+#   1. 瓶颈是定位不是分类：mAP@50 83.8 → mAP@50-95 57.4，36 分丢在 IoU 0.5→0.8；
+#      40% 的目标 ≤64px，IoU 0.90 对 38px 的 ball 只允许 ±2px。
+#   2. 当前增强只有 scale=0.20 / affine_probability=0.33，且 include_originals=true +
+#      augment_ratio=1.0 让每 epoch 有一半是"仅 letterbox"的原图。
+#      参考配方（ultralytics RT-DETR）是 scale=0.5、几何增强连续生效、mosaic=1.0。
+#   3. 模型对推理分辨率极度敏感（同一 checkpoint 1024×576 51.6 / 1920×1088 32.5，
+#      掉 19.2 分），说明回归头被单一尺度锁死 —— 尺度多样性就是解药。
+#
+# 本覆盖层只动"数据侧"，不改底座/阶段/lr/尺寸，可与以下覆盖层叠加：
+#   python scripts/train.py --config configs/base.yaml \
+#     --overlay configs/experiments/runs_x_phase2.yaml \
+#     --overlay configs/experiments/small_object_schedule.yaml \
+#     --overlay configs/experiments/generalization.yaml \
+#     --overlay configs/remote_westd.yaml
+#   （remote_westd.yaml 只覆盖数据路径/标注目录，不含 augmentation 段，顺序不影响增强。
+#     ⚠ 但它会把 model.weights 覆盖成 L；X 底座请在其后再 --set model.weights=/root/aic/rtdetr-x.pt，
+#     或改用 full_data.yaml 的写法。）
+#
+# ⚠ 算力/显存：
+#   - augment_repeats: 2 让 epoch 长度 = 2×图片数 = 与旧配置（原图 1600 + 增强 1600）逐位相同，
+#     所以 epochs / cosine 更新数都不用改；若用 fold_0 的 1600 张，每 epoch 仍是 3200 样本。
+#   - mosaic 会为一半样本额外解码 3 张图（I/O 约 2.5×）。若数据盘/CPU 是瓶颈，先降到
+#     mosaic_probability: 0.3，或把 train.workers 提上去；GPU 计算量不变。
+#   - affine scale 0.45 不改变输入张量尺寸，显存不变。
+
+data:
+  include_originals: false   # 全部样本走随机增强（不再有一半干净原图）
+  augment_ratio: 0.0         # 双保险: include_originals 被改回 true 时也不额外复制
+  augment_repeats: 2         # 每条图每 epoch 两次不同增强 → epoch 长度与旧配置相同
+
+augmentation:
+  horizontal_flip: 0.5
+  affine_probability: 0.9    # 0.33 → 0.9（原来 2/3 的图完全不做几何变换）
+  scale: 0.45                # 0.20 → 0.45: 连续缩放 ∈ [0.55, 1.45]
+                             # factor<1 即 zoom-in，把 24px 的 uav 放大到 35px 呈现
+  translate: 0.15            # 0.10 → 0.15
+
+  # 光度抖动: 同一组参数同时作用于 RGB 与 IR（保持跨模态一致性），深度通道不动。
+  # 目的不是应对"复赛更难"（体检已证明同分布），而是降低对单一相机增益/曝光的依赖，
+  # 让骨干学到的特征对亮度变化等变 —— 这是泛化能力最直接的一环。
+  photometric_probability: 0.7
+  brightness: 0.20
+  contrast: 0.20
+  gamma: 0.20
+
+  # 随机擦除: RGB/IR 同步置 0，深度同区域置 0（HHA 0 = 无效；raw 的 valid=0 = 缺失）。
+  # 避开 GT 中心，避免把 24~38px 的小目标整块删掉。
+  erasing_probability: 0.10
+  erasing_scale: [0.02, 0.12]
+
+  infrared_dropout: 0.10     # 条件模态 dropout 保留（CoLA 风格鲁棒性实验轴）
+  depth_dropout: 0.10
+  dark_brightness: 0.35
+
+  # 4 图 mosaic: 每张源图独立随机裁剪 + 缩放 + 平移，同时抬高"每图目标数"
+  # （训练集 GT 密度 7.5 框/图，mosaic 后更接近真实的多目标场景）。
+  # DETR 的 query 匹配在拼接图上偏不稳，所以最后 20 个 epoch 关闭（close-mosaic）。
+  mosaic_probability: 0.5
+  mosaic_close_epochs: 20
+  mosaic_min_phase: 2            # Phase 1 是 640×384, 象限里 24px 的 uav 只剩 ~12px;
+                                 # 跳过 Phase 1, 从 1024×576 开始开 mosaic
+  mosaic_crop_scale: [0.35, 1.0]
+
+# 可选的正则项（本文件不默认改，避免和现有 lr 结论混在一起）：
+#   每阶段 weight_decay 5e-4 → 1e-3（30.9M 新分支 + 1600 张图，偏大）：
+#     --set train.phases.0.weight_decay=0.001 \
+#     --set train.phases.1.weight_decay=0.001 \
+#     --set train.phases.2.weight_decay=0.001

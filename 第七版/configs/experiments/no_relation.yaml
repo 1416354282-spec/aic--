@@ -1,0 +1,11 @@
+# E2-E4 消融基线: 关闭 Relation-Aware Refiner (对比 E2/E3/E4 逐级收益)
+_base_: ../base.yaml
+model:
+  relation:
+    alpha_cooc: 0.0
+    alpha_spatial: 0.0
+    alpha_geo: 0.0
+    use_appearance: false
+loss:
+  relation:
+    weight: 0.0

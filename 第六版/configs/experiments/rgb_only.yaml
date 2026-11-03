@@ -1,0 +1,9 @@
+# E0: 纯 RT-DETR RGB-only 基线 (COCO 预训练微调)
+model:
+  mode: rgb_only
+loss:
+  target_mask:
+    enabled: false
+augmentation:
+  infrared_dropout: 0.0
+  depth_dropout: 0.0

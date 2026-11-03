@@ -1,0 +1,3 @@
+model:
+  depth_type_adapters: true
+  modality_gradient_stats_every: 20

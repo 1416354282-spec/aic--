@@ -1,0 +1,11 @@
+# 运行产物
+__pycache__/
+*.pyc
+.pytest_cache/
+outputs/
+runs/
+runs_mini/
+
+# 权重 (体积大, 经 sync_to_5090d.sh 或手动同步; 如需入库可删除下面两行)
+weights/dfine_l_coco.pth
+weights/dfine_x_coco.pth

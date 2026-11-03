@@ -1,0 +1,27 @@
+# E-aug: 尺度多样性增强 (小目标高 IoU 定位的主要正则项)
+#
+# 实测依据 (见 第六版小目标专项改进方案.md 第一节):
+#   40% 的 GT ≤64px, uav 中位 23.9px、ball 37.9px; IoU 0.90 对 38px 目标只允许 ±2px。
+#   当前 scale=0.20 / affine_probability=0.33 → 2/3 的图完全不做几何变换,
+#   模型没有机会学到"同一目标在不同尺度下的框", 这是 mAP@50 83.8 → mAP@50-95 57.4
+#   这条 36 分缺口的直接成因。
+#
+# 用法 (可与 small_object_schedule.yaml / small_object_loss.yaml 叠加):
+#   python scripts/train.py --config configs/base.yaml \
+#     --overlay configs/experiments/runs_x_phase2.yaml \
+#     --overlay configs/experiments/small_object_aug.yaml
+augmentation:
+  horizontal_flip: 0.5
+  scale: 0.45              # 0.20 → 0.45: 连续尺度抖动 ∈ [0.55, 1.45];
+                           # factor<1 即 zoom-in (把 24px 的 uav 放大到 35px 呈现)
+  translate: 0.15          # 0.10 → 0.15
+  affine_probability: 0.9  # 0.33 → 0.9
+  infrared_dropout: 0.10
+  depth_dropout: 0.10
+  dark_brightness: 0.35
+
+# 关于 include_originals / augment_ratio (base.yaml 仍为 true/1.0):
+#   现状 = 每 epoch 前一半是"仅 letterbox 的无增强原图", 后一半才是增强图。
+#   想改成纯增强集: data.include_originals=false (或 augment_ratio: 2.0~3.0)。
+#   注意 epoch 长度会变 (3200 → 1600), 需把各 phase 的 epochs 约略翻倍,
+#   否则等效更新数腰斩 (cosine 按 updates 计, 会静默缩短训练)。

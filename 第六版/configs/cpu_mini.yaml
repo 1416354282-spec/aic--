@@ -1,0 +1,99 @@
+# CPU 迷你训练: 验证 trainer 三阶段全流程 (阶段切换/优化器重建/EMA/checkpoint/评估)
+# 用法: python scripts/train.py --config configs/cpu_mini.yaml
+project:
+  seed: 42
+  deterministic: false
+  output_root: "../outputs/runs_mini"
+
+data:
+  train_root: "../../初赛数据集-面向城市场景的多模态目标检测/训练集/AIC2026_Train_2000"
+  test_root: "../../初赛数据集-面向城市场景的多模态目标检测/测试集/AIC2026_PHASE_1_1000"
+  split_dir: "../outputs/splits_mini"
+  fold: 0
+  infrared_mode: mean
+  depth_encoding: hha
+
+model:
+  mode: tri
+  weights: "../../rtdetr-l.pt"
+  yaml_cfg: rtdetr-l.yaml
+  num_classes: 12
+  fusion: tri_cssa
+  feature_layers: [3, 7, 9]
+  backbone_end: 9
+  probe_size: 128
+  out_strides: [8, 16, 32]
+  ir_width: 0.375
+  depth_width: 0.375
+  attention_groups: 8
+  cmtf_nhead: 2
+  cmtf_cross_attn: true
+  cmtf_lite: false
+  target_refinement_levels: [0, 1]
+
+augmentation:
+  horizontal_flip: 0.5
+  scale: 0.20
+  translate: 0.10
+  affine_probability: 0.33
+  infrared_dropout: 0.10
+  depth_dropout: 0.10
+  dark_brightness: 0.35
+
+train:
+  workers: 0
+  validate_every: 1
+  save_every: 1
+  ema:
+    enabled: true
+    decay: 0.9999
+  phases:
+    - epochs: 1
+      lr: 0.001
+      size: [256, 256]
+      batch_size: 2
+      freeze_backbone: true
+      freeze_decoder: true
+      rgb_lr_ratio: 0.1
+      detector_lr_ratio: 0.5
+      accumulation_steps: 1
+      warmup_epochs: 1
+      final_lr_ratio: 0.1
+    - epochs: 1
+      lr: 0.0005
+      size: [256, 256]
+      batch_size: 2
+      freeze_backbone: true
+      freeze_decoder: false
+      rgb_lr_ratio: 0.1
+      detector_lr_ratio: 0.5
+      accumulation_steps: 1
+      warmup_epochs: 1
+      final_lr_ratio: 0.1
+    - epochs: 1
+      lr: 0.0001
+      size: [256, 256]
+      batch_size: 2
+      freeze_backbone: false
+      freeze_decoder: false
+      rgb_lr_ratio: 0.1
+      detector_lr_ratio: 0.5
+      accumulation_steps: 1
+      warmup_epochs: 1
+      final_lr_ratio: 0.1
+
+loss:
+  target_mask:
+    enabled: true
+    weight: 0.10
+    focal_gamma: 2.0
+    dice_weight: 1.0
+    center_sigma: 0.35
+  dssm:
+    enabled: false
+    implementation: proxy
+
+validation:
+  confidence: 0.001
+  nms_iou: 0.7
+  max_detections: 100

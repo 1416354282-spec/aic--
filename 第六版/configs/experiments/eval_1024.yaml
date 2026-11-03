@@ -1,0 +1,36 @@
+# 推理用: 以 1024×576 分辨率推理 (Phase 3 尺寸覆盖)
+train:
+  phases:
+    - epochs: 20
+      lr: 0.001
+      size: [640, 640]
+      batch_size: 24
+      freeze_backbone: true
+      freeze_decoder: true
+      rgb_lr_ratio: 0.1
+      detector_lr_ratio: 0.5
+      accumulation_steps: 2
+      warmup_epochs: 3
+      final_lr_ratio: 0.01
+    - epochs: 100
+      lr: 0.0005
+      size: [1024, 576]
+      batch_size: 4
+      freeze_backbone: true
+      freeze_decoder: false
+      rgb_lr_ratio: 0.1
+      detector_lr_ratio: 0.5
+      accumulation_steps: 2
+      warmup_epochs: 3
+      final_lr_ratio: 0.01
+    - epochs: 30
+      lr: 0.0001
+      size: [1024, 576]
+      batch_size: 4
+      freeze_backbone: false
+      freeze_decoder: false
+      rgb_lr_ratio: 0.1
+      detector_lr_ratio: 0.5
+      accumulation_steps: 4
+      warmup_epochs: 2
+      final_lr_ratio: 0.01

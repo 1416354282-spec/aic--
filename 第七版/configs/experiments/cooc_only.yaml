@@ -1,0 +1,8 @@
+# E2: 仅共现先验 (Refiner 阶段 1) — 验证共现矩阵对小数据稀有类的增益
+_base_: ../base.yaml
+model:
+  relation:
+    alpha_cooc: 0.15
+    alpha_spatial: 0.0
+    alpha_geo: 0.0
+    use_appearance: false

@@ -1,0 +1,40 @@
+# 推理用: 以 1536×864 分辨率推理 (覆盖最后一个 phase 的 size, 与 small_object_schedule.yaml 配对)
+#
+# 与 Phase 3 保持同一分辨率是必须的: 训练 1536 / 推理 1920 会重新引入尺度错配。
+# 用法:
+#   python scripts/infer_phase2.py <checkpoint> --overlay configs/experiments/eval_1536.yaml --tta
+train:
+  phases:
+    - epochs: 12
+      lr: 0.001
+      size: [640, 384]
+      batch_size: 24
+      freeze_backbone: true
+      freeze_decoder: true
+      rgb_lr_ratio: 0.1
+      detector_lr_ratio: 0.5
+      accumulation_steps: 2
+      warmup_epochs: 2
+      final_lr_ratio: 0.01
+    - epochs: 40
+      lr: 0.0005
+      size: [1024, 576]
+      batch_size: 12
+      freeze_backbone: true
+      freeze_decoder: false
+      rgb_lr_ratio: 0.1
+      detector_lr_ratio: 0.5
+      accumulation_steps: 2
+      warmup_epochs: 2
+      final_lr_ratio: 0.01
+    - epochs: 98
+      lr: 0.0001
+      size: [1536, 864]   # ← 推理分辨率 (只有最后一个 phase 的 size 被 infer 脚本读取)
+      batch_size: 3       # 推理 batch (不累积); 显存不够就降到 1~2
+      freeze_backbone: false
+      freeze_decoder: false
+      rgb_lr_ratio: 0.1
+      detector_lr_ratio: 0.5
+      accumulation_steps: 6
+      warmup_epochs: 2
+      final_lr_ratio: 0.01

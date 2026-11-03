@@ -1,0 +1,3 @@
+# Keep configured dropout probabilities, disable dark-frame conditioning only.
+augmentation:
+  conditional_dropout: false

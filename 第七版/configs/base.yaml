@@ -1,0 +1,113 @@
+# 第七版默认配置: D-FINE-L + Tri-CSSA + Relation-Aware Refiner (设计文档 §3)
+project:
+  seed: 42
+  deterministic: true
+  output_root: "../outputs/runs"
+
+data:
+  num_classes: 12
+  train_root: "../../初赛数据集-面向城市场景的多模态目标检测/训练集/AIC2026_Train_2000"
+  test_root: "../../初赛数据集-面向城市场景的多模态目标检测/测试集/AIC2026_PHASE_1_1000"
+  split_dir: "../outputs/splits"   # scripts/make_split.py 生成 (当前扁平命名数据集); 远程旧布局经 remote_westd.yaml 覆盖
+  fold: 0
+  labels_subfolder: new_labels_2000  # 本机标注子目录; 远程若为 labels 可经 overlay 覆盖
+  infrared_mode: mean
+  depth_encoding: hha       # "hha": 几何编码 (视差/高度/角度), "raw": 原始深度值+掩码+格式标记
+  depth_mode: log
+  include_originals: true   # 训练集 = 原图(仅 letterbox) + 增强图
+  augment_ratio: 1.0        # 增强图数量 = 原图 × ratio (1.0=全量翻倍; 0.5=增强图减半提速)
+
+model:
+  base: dfine               # "dfine": 官方 D-FINE 路径 (默认) | "rtdetr": 回退第六版 RT-DETR 实现
+  mode: tri                 # "tri": 三模态 (RGB + IR + Depth) | "rgb_only": 纯 D-FINE 基线 (E0)
+  fusion: tri_cssa          # "tri_cssa": v3 通道评分融合 (默认) | "cmtf": v5 跨模态注意力融合 (E5)
+  weights: "../weights/dfine_l_coco.pth"   # 本地权重 (hf-mirror 下载 Peterande/D-FINE, 离线加载)
+  num_classes: 12
+  probe_size: 256           # 运行时探测 RGB 三尺度通道 (复用 v6 探测思路)
+  out_strides: [8, 16, 32]  # IR/Depth 编码器输出尺度
+  ir_width: 0.375
+  depth_width: 0.375
+  attention_groups: 8
+  cmtf_nhead: 2
+  cmtf_cross_attn: true
+  cmtf_lite: false
+  target_refinement_levels: [0, 1]   # Target-Aware Refiner 挂 F3/F4 (v3 配置, E8 关闭)
+  relation:
+    priors: "../priors/relation_priors.npz"  # scripts/build_priors.py 生成 (仅官方训练集统计)
+    hidden: 64
+    alpha_cooc: 0.15        # α₁ 共现先验 (E2)
+    alpha_spatial: 0.10     # α₂ 空间先验 (E3)
+    alpha_geo: 0.20         # α₃ 几何关系精炼 (E4)
+    use_appearance: false   # 外观注意力默认关 (小数据下易过拟合)
+    warmup_epochs: 5        # α 系数前 5 epoch 线性 warmup (§3.7.5)
+    topk_for_graph: 50      # 图级类别分布 d = 逐类 top-50 置信度均值
+    feature_dim: 256
+
+augmentation:
+  horizontal_flip: 0.5
+  scale: 0.20
+  translate: 0.10
+  affine_probability: 0.33
+  infrared_dropout: 0.10    # 条件模态缺失: 暗帧概率减半 (CoLA 风格; E7 关闭)
+  depth_dropout: 0.10
+  dark_brightness: 0.35
+
+train:
+  workers: 4
+  validate_every: 5
+  save_every: 10
+  ema:
+    enabled: true
+    decay: 0.9999
+  phases:
+    - epochs: 20            # Phase 1: 只训练新分支 (编码器 + 融合 + Refiner + 关系模块)
+      lr: 0.001
+      size: [640, 640]      # 32 整除约束
+      batch_size: 12        # 5090D 32GB fp32 实测: bs12≈22GB; bs16≈29GB 余量不足, bs24 OOM
+      freeze_backbone: true
+      freeze_decoder: true
+      rgb_lr_ratio: 0.1
+      detector_lr_ratio: 0.5
+      accumulation_steps: 4 # 等效 batch 48 (= 12×4, 与原 24×2 一致)
+      warmup_epochs: 3
+      final_lr_ratio: 0.01
+    - epochs: 85            # Phase 2: 解冻 encoder+decoder, 联合训练
+      lr: 0.0005
+      size: [1024, 576]     # 16:9
+      batch_size: 8         # 5090D fp32 实测: bs8≈21GB; bs12≈31GB 余量不足, bs16 OOM
+      freeze_backbone: true
+      freeze_decoder: false
+      rgb_lr_ratio: 0.1
+      detector_lr_ratio: 0.5
+      accumulation_steps: 4 # 等效 batch 32 (= 8×4, 与原 16×2 一致)
+      warmup_epochs: 3
+      final_lr_ratio: 0.01
+    - epochs: 45            # Phase 3: 全解冻, 高分辨率细粒度精调
+      lr: 0.0001
+      size: [1280, 736]     # 16:9 (720 非 32 倍数 → 736)
+      batch_size: 4         # 5090D fp32 实测: bs4≈22GB; bs6≈33GB OOM (BN 统计经 running EMA 平滑)
+      freeze_backbone: false
+      freeze_decoder: false
+      rgb_lr_ratio: 0.1
+      detector_lr_ratio: 0.5
+      accumulation_steps: 8 # 等效 batch 32 (= 4×8, 与原 8×4 一致)
+      warmup_epochs: 2
+      final_lr_ratio: 0.01
+
+loss:
+  target_mask:
+    enabled: true
+    weight: 0.10
+    focal_gamma: 2.0
+    dice_weight: 1.0
+    center_sigma: 0.35
+  relation:
+    weight: 0.05            # λ_rel × 关系精炼辅助监督 (§3.8)
+
+validation:
+  confidence: 0.001
+  # 按类别额外置信度阈值: {类别id: 阈值}, 覆盖全局 confidence。
+  # 用于稀有/易误报类别 (如 7=ball, 11=tricycle), 数值需在验证/提交上校准。
+  class_confidence: {}
+  nms_iou: 0.7
+  max_detections: 100

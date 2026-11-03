@@ -1,0 +1,60 @@
+# Held-out fold-0 experiment on the existing 24 GB server.
+project:
+  output_root: /root/aic/v8/runs_fold
+data:
+  train_root: /root/autodl-tmp/训练集
+  test_root: /root/autodl-tmp/测试集
+  split_dir: /root/aic/v6/第二版-outputs/splits
+  labels_subfolder: new_labels_2000
+  fold: 0
+model:
+  weights: /root/aic/rtdetr-x.pt
+  yaml_cfg: rtdetr-x.yaml
+  feature_layers: [4, 10, 13]
+  backbone_end: 13
+  fusion: reliability
+  modality_feature_grad_max: 0.001
+train:
+  phases:
+    - epochs: 20
+      lr: 0.001
+      size: [640, 640]
+      batch_size: 8
+      freeze_backbone: true
+      freeze_decoder: true
+      rgb_lr_ratio: 0.1
+      detector_lr_ratio: 0.5
+      accumulation_steps: 4
+      warmup_epochs: 3
+      final_lr_ratio: 0.01
+      grad_clip: 1.0
+      grad_value_clip: 10000.0
+      amp: false
+    - epochs: 85
+      lr: 0.0005
+      size: [1024, 576]
+      batch_size: 8
+      freeze_backbone: true
+      freeze_decoder: false
+      rgb_lr_ratio: 0.1
+      detector_lr_ratio: 0.5
+      accumulation_steps: 3
+      warmup_epochs: 3
+      final_lr_ratio: 0.01
+      grad_clip: 1.0
+      grad_value_clip: 10000.0
+      amp: false
+    - epochs: 45
+      lr: 0.0001
+      size: [1536, 864]
+      batch_size: 2
+      freeze_backbone: false
+      freeze_decoder: false
+      rgb_lr_ratio: 0.1
+      detector_lr_ratio: 0.5
+      accumulation_steps: 9
+      warmup_epochs: 2
+      final_lr_ratio: 0.01
+      grad_clip: 1.0
+      grad_value_clip: 10000.0
+      amp: false

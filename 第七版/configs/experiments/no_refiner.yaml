@@ -1,0 +1,4 @@
+# E8: 关闭 Target-Aware Refiner (F3/F4 soft-box 辅助监督) — 辅助监督收益对照
+_base_: ../base.yaml
+model:
+  target_refinement_levels: []

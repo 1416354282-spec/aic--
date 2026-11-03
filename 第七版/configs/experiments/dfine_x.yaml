@@ -1,0 +1,45 @@
+# E6: D-FINE-X 底座 (63M) + 三模态分支 (总参数 93.5M, 5090D fp32 实测)
+# 注意: 本文件位于 configs/experiments/, 相对路径从这里解析 (需 ../../ 到仓库根);
+# 作为 overlay 使用时须放在 remote_westd.yaml 之后 (权重覆盖顺序)
+# 用法: python scripts/train.py --config configs/base.yaml \
+#           --overlay configs/remote_westd.yaml --overlay configs/experiments/dfine_x.yaml
+_base_: ../base.yaml
+model:
+  weights: "../../weights/dfine_x_coco.pth"
+  dfine_yaml: "../../third_party/D-FINE/configs/dfine/dfine_hgnetv2_x_coco.yml"
+
+train:
+  phases:
+    - epochs: 20            # Phase 1: 只训练新分支 (X 底座冻结)
+      lr: 0.001
+      size: [640, 640]
+      batch_size: 14        # 5090D fp32 实测: bs14≈28.8GB (bs16≈32.8GB 超限)
+      freeze_backbone: true
+      freeze_decoder: true
+      rgb_lr_ratio: 0.1
+      detector_lr_ratio: 0.5
+      accumulation_steps: 2 # 等效 batch 28
+      warmup_epochs: 3
+      final_lr_ratio: 0.01
+    - epochs: 85            # Phase 2: 解冻 encoder+decoder (X 编码器 20.7M 解冻)
+      lr: 0.0005
+      size: [1024, 576]
+      batch_size: 10        # 5090D fp32 实测: bs10≈29.4GB (bs12 OOM)
+      freeze_backbone: true
+      freeze_decoder: false
+      rgb_lr_ratio: 0.1
+      detector_lr_ratio: 0.5
+      accumulation_steps: 2 # 等效 batch 20
+      warmup_epochs: 3
+      final_lr_ratio: 0.01
+    - epochs: 45            # Phase 3: 全解冻, 高分辨率细粒度精调 (= v6 高分辨率档)
+      lr: 0.0001
+      size: [1920, 1088]    # 16:9 (1080 非 32 倍数 → 1088)
+      batch_size: 1         # 实测 bs2 前向 29.3GB, 但 105 epoch 后 optimizer/EMA/碎片使实际 31.3GB OOM
+      freeze_backbone: false
+      freeze_decoder: false
+      rgb_lr_ratio: 0.1
+      detector_lr_ratio: 0.5
+      accumulation_steps: 4 # 等效 batch 4 (BN 统计靠 running EMA 平滑)
+      warmup_epochs: 2
+      final_lr_ratio: 0.01

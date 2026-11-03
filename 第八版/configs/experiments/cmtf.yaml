@@ -1,0 +1,3 @@
+# E2: 融合机制消融 —— CMTF (v5 跨模态注意力) 替代 Tri-CSSA
+model:
+  fusion: cmtf

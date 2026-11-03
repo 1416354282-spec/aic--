@@ -1,0 +1,121 @@
+project:
+  seed: 42
+  deterministic: true
+  output_root: "../outputs/runs"
+
+data:
+  train_root: "../../初赛数据集-面向城市场景的多模态目标检测/训练集/AIC2026_Train_2000"
+  test_root: "../../初赛数据集-面向城市场景的多模态目标检测/测试集/AIC2026_PHASE_1_1000"
+  split_dir: "../../第二版/outputs/splits"
+  fold: 0
+  infrared_mode: mean
+  depth_encoding: hha       # "hha": 几何编码 (视差/高度/角度), "raw": 原始深度值+掩码+格式标记
+  depth_mode: log
+  hha_version: maskaware_v2  # Old checkpoints without this key retain legacy input at inference.
+  include_originals: true   # 训练集 = 原图(仅 letterbox) + 增强图
+  augment_ratio: 1.0        # 增强图数量 = 原图 × ratio (1.0=全量翻倍; 0.5=增强图减半提速)
+
+model:
+  mode: tri                 # "tri": 三模态 (RGB + IR + Depth) | "rgb_only": 纯 RT-DETR 基线 (E0)
+  weights: "../../rtdetr-l.pt"    # 本地权重 (rtdetr-l.pt / rtdetr-x.pt, 离线加载)
+  yaml_cfg: rtdetr-l.yaml   # ultralytics 内置架构配置; rtdetr-x.yaml 对应 X 底座
+  num_classes: 12
+  fusion: reliability      # 局部可靠性融合; tri_cssa / cmtf 用于消融
+  modality_feature_grad_max: 0.001
+  modality_gradient_stats_every: 20  # 每 20 个训练 batch 抽样，按尺度记录限幅比例
+  depth_type_adapters: false        # 老模型结构默认不变；新实验显式启用
+  feature_layers: [3, 7, 9] # HGNetv2 backbone 输出 S3/S4/S5 (stride 8/16/32)
+  backbone_end: 9
+  probe_size: 256
+  out_strides: [8, 16, 32]  # IR/Depth 编码器输出尺度, 与 feature_layers 对齐
+  ir_width: 0.375
+  depth_width: 0.375
+  attention_groups: 8
+  cmtf_nhead: 2
+  cmtf_cross_attn: true
+  cmtf_lite: false
+  target_refinement_levels: [0, 1]   # Target-Aware Refiner 挂 F3/F4 (v3 配置)
+  # 小目标回归损失 (见 src/aic_v8/models/losses.py): 不配置 = 官方 RT-DETR 损失, 逐位相同。
+  # 12 类直接平均 → 原版"归一化坐标 L1"的梯度按目标尺寸加权, 与评测口径相反;
+  # 打开后匹配代价不变, 只改已匹配对的回归项。
+  # regression_loss:
+  #   l1_size_gamma: 0.5        # (中位尺度/目标尺度)^gamma 加权 L1
+  #   nwd_blend: 0.5            # GIoU 与 NWD 的混合系数 (高 IoU 段更平滑)
+  #   nwd_c: 0.0                # 0 = 用 batch 内 GT 尺度中位数自适应
+
+augmentation:
+  horizontal_flip: 0.5
+  scale: 0.20
+  translate: 0.10
+  affine_probability: 0.33
+  infrared_dropout: 0.10    # 条件模态缺失: 暗帧概率减半 (CoLA 风格)
+  depth_dropout: 0.10
+  dark_brightness: 0.35
+  conditional_dropout: true
+
+train:
+  evaluate_initial: true
+  phase2_early_stopping:
+    enabled: true
+    patience: 5             # 连续 5 次验证无显著提升，提前进入第三阶段
+    min_delta: 0.001         # mAP@50-95 绝对提升；每 5 轮验证时约为 25 轮耐心
+  workers: 4
+  validate_every: 5
+  save_every: 10
+  ema:
+    enabled: true
+    decay: 0.9999
+  phases:
+    - epochs: 20            # Phase 1: 只训练新分支 (编码器 + Tri-CSSA + Refiner)
+      lr: 0.001
+      size: [640, 640]      # 32 整除约束 (RT-DETR)
+      batch_size: 24
+      freeze_backbone: true
+      freeze_decoder: true
+      rgb_lr_ratio: 0.1
+      detector_lr_ratio: 0.5
+      accumulation_steps: 2
+      warmup_epochs: 3
+      final_lr_ratio: 0.01
+    - epochs: 100           # Phase 2: 解冻 neck+decoder, 联合训练
+      lr: 0.0005
+      size: [1024, 576]     # 16:9
+      batch_size: 16  # 1024x576 + denoising OOM 后从 20 下调
+      freeze_backbone: true
+      freeze_decoder: false
+      rgb_lr_ratio: 0.1
+      detector_lr_ratio: 0.5
+      accumulation_steps: 2
+      warmup_epochs: 3
+      final_lr_ratio: 0.01
+    - epochs: 30            # Phase 3: 全解冻, 高分辨率细粒度精调
+      lr: 0.0001
+      size: [1280, 736]     # 16:9 (720 非 32 倍数 → 736)
+      batch_size: 8
+      freeze_backbone: false
+      freeze_decoder: false
+      rgb_lr_ratio: 0.1
+      detector_lr_ratio: 0.5
+      accumulation_steps: 4
+      warmup_epochs: 2
+      final_lr_ratio: 0.01
+
+loss:
+  target_mask:
+    enabled: true
+    weight: 0.10
+    focal_gamma: 2.0
+    dice_weight: 1.0
+    center_sigma: 0.35
+  dssm:
+    enabled: false
+    implementation: proxy
+
+validation:
+  confidence: 0.001
+  # 按类别额外置信度阈值: {类别id: 阈值}, 覆盖全局 confidence。
+  # 用于稀有/易误报类别 (如 7=ball, 11=tricycle), 数值需在验证/提交上校准。
+  class_confidence: {}
+  nms_iou: 0.7
+  max_detections: 100
+  multi_label: true

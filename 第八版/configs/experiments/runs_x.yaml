@@ -1,0 +1,43 @@
+# 复刻 outputs/runs_x/last.pt 内嵌训练配置 (RT-DETR-X 底座), 并按小目标方案下调 Phase 3 分辨率
+# last.pt 于 8/5 训练完成 (150 epoch, best_metric 0.559), 与本仓库最新代码配置对齐
+# Phase 3: 1920×1088 → 1536×864 (像素 0.635×, 零填充, 最小类 ball 仍有 30.3px)
+#   ★ 配套: 推理必须同分辨率 → configs/experiments/eval_1536.yaml (不要再用 eval_1920.yaml)
+model:
+  yaml_cfg: rtdetr-x.yaml   # X 底座; 权重由 --set model.weights=... 指定 (远程绝对路径)
+  feature_layers: [4, 10, 13]  # RT-DETR-X: S3/S4/S5 在层 4/10/13 (与 L 的 3/7/9 不同)
+  backbone_end: 13
+train:
+  phases:
+    - epochs: 20            # Phase 1: 新分支 + 分类头 (640x640 快速成形)
+      lr: 0.001
+      size: [640, 640]
+      batch_size: 16
+      freeze_backbone: true
+      freeze_decoder: true
+      rgb_lr_ratio: 0.1
+      detector_lr_ratio: 0.5
+      accumulation_steps: 2
+      warmup_epochs: 3
+      final_lr_ratio: 0.01
+    - epochs: 85            # Phase 2: 解冻 neck+decoder, 16:9 高分辨率
+      lr: 0.0005
+      size: [1024, 576]
+      batch_size: 12
+      freeze_backbone: true
+      freeze_decoder: false
+      rgb_lr_ratio: 0.1
+      detector_lr_ratio: 0.5
+      accumulation_steps: 2
+      warmup_epochs: 3
+      final_lr_ratio: 0.01
+    - epochs: 45            # Phase 3: 全解冻, 精调
+      lr: 0.0001
+      size: [1536, 864]     # 原 1920×1088 (1088=34x32); 1536/864 都是 32 的倍数且零填充
+      batch_size: 3         # 1920 时实测 batch3=30.7G 临界 → 1536 先按 3 跑
+      accumulation_steps: 6 # 用 scripts/probe_phase_vram.py 确认后可用 4 + accum 4
+      freeze_backbone: false
+      freeze_decoder: false
+      rgb_lr_ratio: 0.1
+      detector_lr_ratio: 0.5
+      warmup_epochs: 2
+      final_lr_ratio: 0.01
